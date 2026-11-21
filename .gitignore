@@ -1,3 +1,4 @@
 .local/
+tracks/
 __pycache__/
 *.pyc
