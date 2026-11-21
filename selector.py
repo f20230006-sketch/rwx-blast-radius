@@ -451,7 +451,45 @@ class Selector:
             return self.translate(int(self.fixtures[path], 16)) | self.unmapped
         if path.startswith("sqlglot/") and path.endswith(".py"):
             return self.python_change(path, patch)
+        # Test file changes: only select the tests from that file
+        if path.startswith("tests/") and path.endswith(".py"):
+            return self.test_file_change(path, patch)
+        # Non-code files: docs, CI, configs, etc. don't affect tests
+        if self.is_non_code(path):
+            return 0
         return self.all_tests
+
+    def test_file_change(self, path, patch):
+        """Handle changes to test files themselves."""
+        # tests/helpers.py is imported by virtually all tests
+        basename = Path(path).name
+        if basename == "helpers.py":
+            return self.all_tests
+        # tests/__init__.py and tests/dialects/__init__.py are empty or trivial
+        if basename == "__init__.py":
+            return 0
+        # Changes to a specific test file: run only that file's tests
+        if path in self.by_test_file:
+            bits = sum(bit for bit, _ in self.by_test_file[path])
+            return bits | self.unmapped
+        # Unknown test file: run all tests
+        return self.all_tests
+
+    @staticmethod
+    def is_non_code(path):
+        """Files that never affect test outcomes."""
+        NON_CODE_PATTERNS = (
+            ".github/", ".pre-commit", "pdoc/", "docs/",
+        )
+        NON_CODE_EXACT = {
+            "AGENTS.md", "CHANGELOG.md", "CLAUDE.md", "CONTRIBUTING.md",
+            "LICENSE", "MANIFEST.in", "Makefile", "README.md",
+            "pyproject.toml", "setup.py", "setup.cfg", ".gitignore",
+            ".flake8", ".editorconfig", ".gitattributes",
+        }
+        if path in NON_CODE_EXACT or Path(path).name in NON_CODE_EXACT:
+            return True
+        return any(path.startswith(prefix) for prefix in NON_CODE_PATTERNS)
 
     def select(self, patch):
         selected = 0
